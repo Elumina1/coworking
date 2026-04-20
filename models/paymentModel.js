@@ -1,6 +1,7 @@
 const { DataTypes, DECIMAL } = require('sequelize');
 const sequelize = require('../config/db');
 const bookingModel = require('./bookingModel');
+const userModel = require('./userModel');
 
 const payment = sequelize.define('payment', {
     id: {
@@ -14,6 +15,14 @@ const payment = sequelize.define('payment', {
         allowNull: false,
         references: {
             model: bookingModel,
+            key: 'id'
+        }
+    },
+    user_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+            model: userModel,
             key: 'id'
         }
     },

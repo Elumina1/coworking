@@ -1,12 +1,38 @@
 const AutController = require('../controllers/authController')
 const { Router } = require('express')
-const { authMidlleware } = require('../middleware/authMiddleware')
+const { body, validationResult } = require('express-validator')
 
 const router = new Router()
-
 const autController = new AutController()
 
-router.post('/register', autController.register.bind(autController)) // роут на регистрацию пользователя
-router.post('/login', autController.login.bind(autController)) // маршрут для авторизации
+const validateRequest = (req, res, next) => {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() })
+  }
+  next()
+}
+
+router.post(
+  '/register',
+  [
+    body('email').isEmail().withMessage('Неверный email').normalizeEmail(),
+    body('password').isLength({ min: 6 }).withMessage('Пароль должен быть не менее 6 символов'),
+    body('full_name').notEmpty().withMessage('Укажите имя'),
+    body('second_name').notEmpty().withMessage('Укажите фамилию')
+  ],
+  validateRequest,
+  autController.register.bind(autController)
+)
+
+router.post(
+  '/login',
+  [
+    body('email').isEmail().withMessage('Неверный email').normalizeEmail(),
+    body('password').notEmpty().withMessage('Укажите пароль')
+  ],
+  validateRequest,
+  autController.login.bind(autController)
+)
 
 module.exports = router

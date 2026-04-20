@@ -1,4 +1,8 @@
 const notificationModel = require('../models/notificationModel');
+const bookingModel = require('../models/bookingModel');
+const userModel = require('../models/userModel');
+const workspaceModel = require('../models/workspaceModel');
+const workTypeModel = require('../models/worktypeModels');
 
 class NotificationController {
     // Создание нового уведомления
@@ -23,7 +27,33 @@ class NotificationController {
     // Получение всех уведомлений
     async get(req, res) {
         try {
-            const notifications = await notificationModel.findAll();
+            // Возвращаем уведомления с вложенными данными о пользователе и бронировании
+            const notifications = await notificationModel.findAll({
+                include: [
+                    {
+                        model: userModel,
+                        as: 'user',
+                        attributes: ['id', 'email', 'full_name', 'second_name']
+                    },
+                    {
+                        model: bookingModel,
+                        as: 'booking',
+                        include: [
+                            {
+                                model: workspaceModel,
+                                as: 'workspace',
+                                include: [
+                                    {
+                                        model: workTypeModel,
+                                        as: 'work_type',
+                                        attributes: ['id', 'type_name']
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            });
             return res.json(notifications);
         } catch (error) {
             return res.status(500).json(error);

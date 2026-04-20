@@ -1,10 +1,10 @@
 const { Router } = require('express')
 const PostController = require('../controllers/priceController')
-
+const { authMiddleware, adminMiddleware } = require('../middleware/authMiddleware')
 const router = new Router()
 
 const postController = new PostController()
-router.post('/post/price', postController.create); // добавление цены за место
-router.put('/update/price/:id', postController.update); // обновление цены за место
+router.post('/post/price', authMiddleware, adminMiddleware, postController.create)
+router.put('/update/price/:id', authMiddleware, adminMiddleware, postController.update)
 
 module.exports = router

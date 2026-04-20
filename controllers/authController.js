@@ -6,23 +6,20 @@ const userModel = require('../models/userModel')
 class AuthController{
     async register(req, res){
         try{
-            const {email, password, full_name, second_name, role_id } = req.body
-            
-            //проверка нато что все поля заполнены
-            if(!email || !password || !full_name || !second_name || !role_id){
+            const { email, password, full_name, second_name } = req.body
+            let role_id = 2
+
+            if(!email || !password || !full_name || !second_name){
                 return res.status(400).json({message: 'заполните все поля'})
             }
             
-            //проверка зарегистрирована почта или нет
             const checkEmail = await userModel.findOne({where: {email}})
             if(checkEmail){
                 return res.status(400).json({message: 'Email занят'})
             }
 
-            //хэшируем пароль
             const hashedPassword = await bcrypt.hash(password, 10)
 
-            //сохраняем пользователя в базу данных с хэшированным паролем
             const newUser = await userModel.create({
                 email,
                 password: hashedPassword,

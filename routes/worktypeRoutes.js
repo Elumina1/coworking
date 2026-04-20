@@ -1,12 +1,12 @@
 const { Router } = require('express')
 const WorktypeController = require('../controllers/worktypeController')
-
+const { authMiddleware, adminMiddleware } = require('../middleware/authMiddleware')
 const router = new Router()
 
 const postController = new WorktypeController()
-router.post('/post/worktypes', postController.create); //маршрут создания типа комнаты
-router.get('/get/worktypes', postController.get); //маршрут просмотра всех типов комнат
-router.delete('/del/worktypes/:id', postController.delete); //маршрут для удаление по айди комнаты
-router.put('/update/worktypes/:id', postController.update); //маршрут для обновления по айди комнаты
+router.post('/post/worktypes', authMiddleware, adminMiddleware, postController.create)
+router.get('/get/worktypes', postController.get)
+router.delete('/del/worktypes/:id', authMiddleware, adminMiddleware, postController.delete)
+router.put('/update/worktypes/:id', authMiddleware, adminMiddleware, postController.update)
 
 module.exports = router;
