@@ -1,6 +1,18 @@
 const priceModel = require('../models/priceModels')
 
 class PriceController{
+    //получение всех цен
+    async get(req, res){
+        try{
+            const prices = await priceModel.findAll({
+                order: [['effective_from', 'DESC'], ['id', 'DESC']]
+            })
+            return res.json(prices)
+        }
+        catch(error){
+            return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
+        }
+    }
     //создание новой цены 
     async create (req, res){
         try{
@@ -9,7 +21,7 @@ class PriceController{
         res.json(post)
     }
     catch(error){
-        res.status(500).json(error)
+        res.status(500).json({ message: 'Ошибка сервера', error: error.message })
     }
     }
     // обновление цены по ее айди
@@ -21,7 +33,7 @@ class PriceController{
             return res.json(update)
         }
         catch(error){
-            return res.status(500).json(error)
+            return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
         }
     }
 }

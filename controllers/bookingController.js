@@ -3,8 +3,10 @@ const workspaceModel = require('../models/workspaceModel')
 const workTypeModel = require('../models/worktypeModels')
 const userModel = require('../models/userModel')
 const priceModel = require('../models/priceModels')
+const paymentModel = require('../models/paymentModel')
 const { Op, Sequelize } = require('sequelize')
 const { sendEmail, getBookingCreatedTemplate, getBookingConfirmedTemplate } = require('../services/emailService')
+const { createYooPayment, getYooPayment, createYooRefund, cancelYooPayment } = require('../services/yooCheckoutService')
 
 class BookingController {
     // Создать новое бронирование
@@ -211,7 +213,7 @@ class BookingController {
         }
     }
 
-    // Отменить бронирование — сменить статус на cancelled
+    // Отменить бронирование — сменить статус на cancelled и инициировать возврат при оплате
     async cancel(req, res) {
         try {
             const { id } = req.params
@@ -222,6 +224,31 @@ class BookingController {
             if (req.user.role_id !== 1 && booking.user_id !== req.user.id) {
                 return res.status(403).json({ message: 'Недостаточно прав для отмены этого бронирования' })
             }
+
+            const payment = await paymentModel.findOne({
+                where: { booking_id: id },
+                order: [['created_at', 'DESC']]
+            })
+
+            if (payment && payment.external_id) {
+                try {
+                    const paymentData = await getYooPayment(payment.external_id)
+                    if (['pending', 'waiting_for_capture'].includes(paymentData.status)) {
+                        await cancelYooPayment(paymentData.id)
+                        await payment.update({ payment_status: 'canceled' })
+                    } else if (paymentData.status === 'succeeded') {
+                        const refund = await createYooRefund({
+                            paymentId: paymentData.id,
+                            amount: payment.amount,
+                            description: `Возврат средств за бронирование #${booking.id}`
+                        })
+                        await payment.update({ payment_status: 'refunded', refund_id: refund.id })
+                    }
+                } catch (refundError) {
+                    console.error('Ошибка возврата средств при отмене бронирования:', refundError)
+                }
+            }
+
             const updated = await bookingModel.update({ booking_status: 'cancelled' }, { where: { id } })
             return res.json({ message: 'Бронирование отменено', updated })
         } catch (error) {
@@ -349,30 +376,50 @@ class BookingController {
                 return res.status(404).json({ message: 'Бронирование не найдено' })
             }
 
-            // Обновляем статус на confirmed
-            await bookingModel.update({ booking_status: 'confirmed' }, { where: { id } })
+            const existingPayment = await paymentModel.findOne({
+                where: { booking_id: id },
+                order: [['created_at', 'DESC']]
+            })
 
-            // Отправляем уведомление о подтверждении
-            try {
-                const bookingDetails = {
-                    workspaceName: booking.workspace.workspace_name,
-                    workType: booking.workspace.work_type.type_name,
-                    startDate: new Date(booking.start_date).toLocaleDateString('ru-RU'),
-                    endDate: new Date(booking.end_date).toLocaleDateString('ru-RU'),
-                    totalPrice: booking.total_price
+            if (existingPayment && existingPayment.external_id) {
+                const paymentData = await getYooPayment(existingPayment.external_id)
+                await existingPayment.update({ payment_status: paymentData.status })
+
+                if (paymentData.status === 'succeeded') {
+                    await bookingModel.update({ booking_status: 'confirmed' }, { where: { id } })
                 }
 
-                const emailHtml = getBookingConfirmedTemplate(
-                    `${booking.user.full_name} ${booking.user.second_name}`,
-                    bookingDetails
-                )
-
-                await sendEmail(booking.user.email, 'Бронирование подтверждено', emailHtml)
-            } catch (emailError) {
-                console.error('Ошибка отправки email подтверждения:', emailError)
+                return res.json({
+                    message: paymentData.status === 'succeeded' ? 'Бронирование подтверждено' : 'Оплата ещё не завершена',
+                    payment: paymentData,
+                    confirmation_url: paymentData.confirmation?.confirmation_url
+                })
             }
 
-            return res.json({ message: 'Бронирование подтверждено' })
+            const returnUrl = process.env.YOO_RETURN_URL || 'http://localhost:3000/payment/success'
+            const paymentData = await createYooPayment({
+                amount: booking.total_price,
+                description: `Оплата бронирования #${booking.id}`,
+                returnUrl,
+                metadata: {
+                    booking_id: booking.id,
+                    user_id: booking.user_id
+                }
+            })
+
+            await paymentModel.create({
+                booking_id: booking.id,
+                user_id: booking.user_id,
+                amount: booking.total_price,
+                external_id: paymentData.id,
+                payment_status: paymentData.status
+            })
+
+            return res.status(201).json({
+                message: 'Создан платеж YooKassa для подтверждения бронирования',
+                confirmation_url: paymentData.confirmation?.confirmation_url,
+                payment: paymentData
+            })
         } catch (error) {
             return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
         }

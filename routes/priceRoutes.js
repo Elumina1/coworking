@@ -4,6 +4,7 @@ const { authMiddleware, adminMiddleware } = require('../middleware/authMiddlewar
 const router = new Router()
 
 const postController = new PostController()
+router.get('/get/price', authMiddleware, adminMiddleware, postController.get)
 router.post('/post/price', authMiddleware, adminMiddleware, postController.create)
 router.put('/update/price/:id', authMiddleware, adminMiddleware, postController.update)
 

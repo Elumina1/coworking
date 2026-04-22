@@ -25,12 +25,13 @@ const workTyperouter = require('./routes/worktypeRoutes')
 const priceRouter = require('./routes/priceRoutes')
 const workspaceRouter = require('./routes/workspaceRouter')
 const roleRouter = require('./routes/roleRoutes')
+const userRouter = require('./routes/userRoutes')
 const bookingRouter = require('./routes/bookingRoutes')
 const notificationRouter = require('./routes/notificationRoutes')
 const paymentRouter = require('./routes/paymentRoutes')
 const authRouter = require('./routes/authRoutes')
 
-app.use('/api', authRouter, workspaceRouter, workTyperouter, priceRouter, roleRouter, bookingRouter, notificationRouter, paymentRouter)
+app.use('/api', authRouter, workspaceRouter, workTyperouter, priceRouter, roleRouter, userRouter, bookingRouter, notificationRouter, paymentRouter)
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Ресурс не найден' })

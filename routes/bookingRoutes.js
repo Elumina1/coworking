@@ -101,13 +101,13 @@ router.post(
 )
 
 // Удалить бронирование
-router.delete(
-  '/delete/booking/:id',
-  authMiddleware,
-  [param('id').isInt().withMessage('Идентификатор брони должен быть числом')],
-  validateRequest,
-  postController.delete
-)
+// router.delete(
+//   '/delete/booking/:id',
+//   authMiddleware,
+//   [param('id').isInt().withMessage('Идентификатор брони должен быть числом')],
+//   validateRequest,
+//   postController.delete
+// )
 
 // Административные отчёты (только для админов)
 
