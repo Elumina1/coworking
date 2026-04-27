@@ -44,9 +44,10 @@ const booking = sequelize.define('booking',{
     allowNull: false,
     comment: 'Цена за день на момент бронирования (снапшот)'
   },
-  booking_status:{
-    type: DataTypes.STRING(20),
-    defaultValue: 'pending'
+  booking_status_id:{
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1
   }
 },{
     tableName: 'booking',

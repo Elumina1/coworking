@@ -4,6 +4,7 @@ const userModel = require('../models/userModel')
 const workspaceModel = require('../models/workspaceModel')
 const workTypeModel = require('../models/worktypeModels')
 const { sendEmail, getBookingReminderTemplate } = require('./emailService')
+const { getStatusId } = require('./statusService')
 const { Op } = require('sequelize')
 
 // Функция для отправки напоминаний о предстоящих бронированиях
@@ -13,11 +14,12 @@ async function sendReminders() {
 
     const now = new Date()
     const reminderTime = new Date(now.getTime() + 24 * 60 * 60 * 1000) // За 24 часа до начала
+    const confirmedStatusId = await getStatusId('booking', 'confirmed')
 
     // Находим бронирования, которые начинаются через 24 часа
     const upcomingBookings = await bookingModel.findAll({
       where: {
-        booking_status: 'confirmed',
+        booking_status_id: confirmedStatusId,
         start_date: {
           [Op.gte]: now,
           [Op.lte]: reminderTime
@@ -77,12 +79,14 @@ async function updateCompletedBookings() {
     console.log('Обновление статуса завершенных бронирований...')
 
     const now = new Date()
+    const confirmedStatusId = await getStatusId('booking', 'confirmed')
+    const completedStatusId = await getStatusId('booking', 'completed')
 
     const result = await bookingModel.update(
-      { booking_status: 'completed' },
+      { booking_status_id: completedStatusId },
       {
         where: {
-          booking_status: 'confirmed',
+          booking_status_id: confirmedStatusId,
           end_date: { [Op.lt]: now }
         }
       }

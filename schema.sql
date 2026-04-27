@@ -81,6 +81,70 @@ COLLATE = utf8mb4_0900_ai_ci;
 CREATE INDEX `work_type_id` ON `coworking`.`workspace` (`work_type_id` ASC) VISIBLE;
 
 -- -----------------------------------------------------
+-- Table `coworking`.`booking_statuses`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `coworking`.`booking_statuses` ;
+CREATE TABLE IF NOT EXISTS `coworking`.`booking_statuses` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `code` VARCHAR(30) NOT NULL,
+  `display_name` VARCHAR(100) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE = InnoDB
+AUTO_INCREMENT = 5
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+CREATE UNIQUE INDEX `booking_status_code` ON `coworking`.`booking_statuses` (`code` ASC) VISIBLE;
+
+INSERT INTO `coworking`.`booking_statuses` (`id`, `code`, `display_name`) VALUES
+  (1, 'pending', 'Ожидает подтверждения'),
+  (2, 'confirmed', 'Подтверждено'),
+  (3, 'cancelled', 'Отменено'),
+  (4, 'completed', 'Завершено');
+
+-- -----------------------------------------------------
+-- Table `coworking`.`notification_statuses`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `coworking`.`notification_statuses` ;
+CREATE TABLE IF NOT EXISTS `coworking`.`notification_statuses` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `code` VARCHAR(30) NOT NULL,
+  `display_name` VARCHAR(100) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE = InnoDB
+AUTO_INCREMENT = 4
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+CREATE UNIQUE INDEX `notification_status_code` ON `coworking`.`notification_statuses` (`code` ASC) VISIBLE;
+
+INSERT INTO `coworking`.`notification_statuses` (`id`, `code`, `display_name`) VALUES
+  (1, 'pending', 'Ожидает отправки'),
+  (2, 'sent', 'Отправлено'),
+  (3, 'failed', 'Ошибка');
+
+-- -----------------------------------------------------
+-- Table `coworking`.`payment_statuses`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `coworking`.`payment_statuses` ;
+CREATE TABLE IF NOT EXISTS `coworking`.`payment_statuses` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `code` VARCHAR(40) NOT NULL,
+  `display_name` VARCHAR(100) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE = InnoDB
+AUTO_INCREMENT = 7
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+CREATE UNIQUE INDEX `payment_status_code` ON `coworking`.`payment_statuses` (`code` ASC) VISIBLE;
+
+INSERT INTO `coworking`.`payment_statuses` (`id`, `code`, `display_name`) VALUES
+  (1, 'pending', 'Ожидает оплаты'),
+  (2, 'waiting_for_capture', 'Ожидает подтверждения'),
+  (3, 'succeeded', 'Оплачено'),
+  (4, 'canceled', 'Отменено'),
+  (5, 'refunded', 'Возвращено'),
+  (6, 'failed', 'Ошибка');
+
+-- -----------------------------------------------------
 -- Table `coworking`.`booking`
 -- -----------------------------------------------------
 DROP TABLE IF EXISTS `coworking`.`booking` ;
@@ -92,7 +156,7 @@ CREATE TABLE IF NOT EXISTS `coworking`.`booking` (
   `end_date` DATE NOT NULL,
   `total_price` DECIMAL(10,2) NULL DEFAULT NULL,
   `price_per_day` DECIMAL(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Цена за день на момент бронирования',
-  `booking_status` VARCHAR(20) NOT NULL DEFAULT 'pending',
+  `booking_status_id` INT NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   CONSTRAINT `booking_ibfk_1`
     FOREIGN KEY (`user_id`)
@@ -100,12 +164,17 @@ CREATE TABLE IF NOT EXISTS `coworking`.`booking` (
   CONSTRAINT `booking_ibfk_2`
     FOREIGN KEY (`workspace_id`)
     REFERENCES `coworking`.`workspace` (`id`)
+    ,
+  CONSTRAINT `booking_ibfk_3`
+    FOREIGN KEY (`booking_status_id`)
+    REFERENCES `coworking`.`booking_statuses` (`id`)
 ) ENGINE = InnoDB
 AUTO_INCREMENT = 3
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;
 CREATE INDEX `user_id` ON `coworking`.`booking` (`user_id` ASC) VISIBLE;
 CREATE INDEX `workspace_id` ON `coworking`.`booking` (`workspace_id` ASC) VISIBLE;
+CREATE INDEX `booking_status_id` ON `coworking`.`booking` (`booking_status_id` ASC) VISIBLE;
 
 -- -----------------------------------------------------
 -- Table `coworking`.`notifications_email`
@@ -117,7 +186,7 @@ CREATE TABLE IF NOT EXISTS `coworking`.`notifications_email` (
   `booking_id` INT NOT NULL,
   `subject` VARCHAR(255) NOT NULL,
   `body` TEXT NOT NULL,
-  `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
+  `notification_status_id` INT NOT NULL DEFAULT 1,
   `error_message` TEXT NULL DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `sent_at` TIMESTAMP NULL DEFAULT NULL,
@@ -128,12 +197,17 @@ CREATE TABLE IF NOT EXISTS `coworking`.`notifications_email` (
   CONSTRAINT `notifications_email_ibfk_2`
     FOREIGN KEY (`booking_id`)
     REFERENCES `coworking`.`booking` (`id`)
+    ,
+  CONSTRAINT `notifications_email_ibfk_3`
+    FOREIGN KEY (`notification_status_id`)
+    REFERENCES `coworking`.`notification_statuses` (`id`)
 ) ENGINE = InnoDB
 AUTO_INCREMENT = 2
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;
 CREATE INDEX `user_id` ON `coworking`.`notifications_email` (`user_id` ASC) VISIBLE;
 CREATE INDEX `booking_id` ON `coworking`.`notifications_email` (`booking_id` ASC) VISIBLE;
+CREATE INDEX `notification_status_id` ON `coworking`.`notifications_email` (`notification_status_id` ASC) VISIBLE;
 
 -- -----------------------------------------------------
 -- Table `coworking`.`payment`
@@ -147,7 +221,7 @@ CREATE TABLE IF NOT EXISTS `coworking`.`payment` (
   `external_id` VARCHAR(255) NULL DEFAULT NULL,
   `receipt_id` VARCHAR(255) NULL DEFAULT NULL,
   `refund_id` VARCHAR(255) NULL DEFAULT NULL,
-  `payment_status` VARCHAR(30) NOT NULL DEFAULT 'pending',
+  `payment_status_id` INT NOT NULL DEFAULT 1,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -157,11 +231,16 @@ CREATE TABLE IF NOT EXISTS `coworking`.`payment` (
   CONSTRAINT `payment_ibfk_2`
     FOREIGN KEY (`user_id`)
     REFERENCES `coworking`.`users` (`id`)
+    ,
+  CONSTRAINT `payment_ibfk_3`
+    FOREIGN KEY (`payment_status_id`)
+    REFERENCES `coworking`.`payment_statuses` (`id`)
 ) ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;
 CREATE INDEX `booking_id` ON `coworking`.`payment` (`booking_id` ASC) VISIBLE;
 CREATE INDEX `user_id` ON `coworking`.`payment` (`user_id` ASC) VISIBLE;
+CREATE INDEX `payment_status_id` ON `coworking`.`payment` (`payment_status_id` ASC) VISIBLE;
 
 -- -----------------------------------------------------
 -- Table `coworking`.`price`

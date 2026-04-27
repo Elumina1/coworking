@@ -42,9 +42,10 @@ const payment = sequelize.define('payment', {
         type: DataTypes.STRING(255),
         allowNull: true
     },
-    payment_status: {
-        type: DataTypes.STRING(30),
-        allowNull: false
+    payment_status_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1
     },
     created_at: {
         type: DataTypes.DATE,

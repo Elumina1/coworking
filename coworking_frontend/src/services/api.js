@@ -77,6 +77,11 @@ export const priceService = {
   update: (id, data) => api.put(`/update/price/${id}`, data)
 }
 
+export const paymentService = {
+  createCheckout: (bookingId) => api.post(`/checkout/booking/${bookingId}`),
+  getStatus: (bookingId) => api.get(`/status/booking/${bookingId}`)
+}
+
 export const reportService = {
   getOccupancy: (start_date, end_date) =>
     api.get('/reports/occupancy', { params: { start_date, end_date } }),

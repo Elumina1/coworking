@@ -3,6 +3,8 @@ const bookingModel = require('../models/bookingModel');
 const userModel = require('../models/userModel');
 const workspaceModel = require('../models/workspaceModel');
 const workTypeModel = require('../models/worktypeModels');
+const notificationStatusModel = require('../models/notificationStatusModel');
+const { getStatusId, serializeNotification } = require('../services/statusService');
 
 class NotificationController {
     // Создание нового уведомления
@@ -14,12 +16,19 @@ class NotificationController {
                 booking_id,
                 subject,
                 body,
-                status,
+                notification_status_id: await getStatusId('notification', status || 'pending'),
                 error_message,
                 sent_at
             });
-            return res.json(notification);
+            const createdNotification = await notificationModel.findOne({
+                where: { id: notification.id },
+                include: [{ model: notificationStatusModel, as: 'notificationStatus', attributes: ['id', 'code', 'display_name'] }]
+            });
+            return res.json(serializeNotification(createdNotification));
         } catch (error) {
+            if (error.message.includes('Статус')) {
+                return res.status(400).json({ message: error.message });
+            }
             return res.status(500).json(error);
         }
     }
@@ -51,10 +60,15 @@ class NotificationController {
                                 ]
                             }
                         ]
+                    },
+                    {
+                        model: notificationStatusModel,
+                        as: 'notificationStatus',
+                        attributes: ['id', 'code', 'display_name']
                     }
                 ]
             });
-            return res.json(notifications);
+            return res.json(notifications.map(serializeNotification));
         } catch (error) {
             return res.status(500).json(error);
         }
@@ -65,12 +79,19 @@ class NotificationController {
         try {
             const { id } = req.params;
             const { user_id, booking_id, subject, body, status, error_message, sent_at } = req.body;
+            const updateData = { user_id, booking_id, subject, body, error_message, sent_at };
+            if (status) {
+                updateData.notification_status_id = await getStatusId('notification', status);
+            }
             const update = await notificationModel.update(
-                { user_id, booking_id, subject, body, status, error_message, sent_at },
+                updateData,
                 { where: { id } }
             );
             return res.json(update);
         } catch (error) {
+            if (error.message.includes('Статус')) {
+                return res.status(400).json({ message: error.message });
+            }
             return res.status(500).json(error);
         }
     }

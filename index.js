@@ -1,3 +1,6 @@
+require('dotenv').config()
+require('dotenv').config({ path: '.env.example', override: false })
+
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -31,7 +34,8 @@ const notificationRouter = require('./routes/notificationRoutes')
 const paymentRouter = require('./routes/paymentRoutes')
 const authRouter = require('./routes/authRoutes')
 
-app.use('/api', authRouter, workspaceRouter, workTyperouter, priceRouter, roleRouter, userRouter, bookingRouter, notificationRouter, paymentRouter)
+app.use('/api', authRouter, workspaceRouter, workTyperouter, priceRouter, 
+  roleRouter, userRouter, bookingRouter, notificationRouter, paymentRouter)
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Ресурс не найден' })

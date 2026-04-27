@@ -45,13 +45,33 @@ async function createYooRefund({ paymentId, amount, description }) {
   })
 }
 
-async function createYooReceipt({ paymentId, customer, items, tax_system_code = 1 }) {
+async function createYooReceipt({
+  paymentId,
+  customer,
+  items,
+  settlements,
+  send,
+  tax_system_code = 1,
+  on_behalf_of
+}) {
   const payload = {
     type: 'payment',
     payment_id: paymentId,
     customer,
     items,
     tax_system_code
+  }
+
+  if (Array.isArray(settlements) && settlements.length > 0) {
+    payload.settlements = settlements
+  }
+
+  if (typeof send === 'boolean') {
+    payload.send = send
+  }
+
+  if (on_behalf_of) {
+    payload.on_behalf_of = on_behalf_of
   }
 
   return checkout.createReceipt(payload)

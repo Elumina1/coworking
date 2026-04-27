@@ -7,7 +7,7 @@ class AuthController{
     async register(req, res){
         try{
             const { email, password, full_name, second_name } = req.body
-            let role_id = 2
+            let role_id = 1
 
             if(!email || !password || !full_name || !second_name){
                 return res.status(400).json({message: 'заполните все поля'})
