@@ -34,11 +34,11 @@ const notification = sequelize.define('notifications_email', {
         type: DataTypes.TEXT,
         allowNull: false
     },
-    notification_status_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 1
-    },
+    status: {
+  type: DataTypes.STRING(20),
+  allowNull: false,
+  defaultValue: 'pending'
+},
     error_message: {
         type: DataTypes.TEXT,
         allowNull: true

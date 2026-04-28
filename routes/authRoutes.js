@@ -1,9 +1,9 @@
-const AutController = require('../controllers/authController')
+const AuthController = require('../controllers/authController')
 const { Router } = require('express')
 const { body, validationResult } = require('express-validator')
 
 const router = new Router()
-const autController = new AutController()
+const authController = new AuthController()
 
 const validateRequest = (req, res, next) => {
   const errors = validationResult(req)
@@ -22,7 +22,7 @@ router.post(
     body('second_name').notEmpty().withMessage('Укажите фамилию')
   ],
   validateRequest,
-  autController.register.bind(autController)
+  authController.register.bind(authController)
 )
 
 router.post(
@@ -32,7 +32,7 @@ router.post(
     body('password').notEmpty().withMessage('Укажите пароль')
   ],
   validateRequest,
-  autController.login.bind(autController)
+  authController.login.bind(authController)
 )
 
 module.exports = router

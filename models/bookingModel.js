@@ -27,16 +27,17 @@ const booking = sequelize.define('booking',{
     }
   },
   start_date:{
-    type: DataTypes.DATE,
+    type: DataTypes.DATEONLY,
     allowNull: false
   },
   end_date:{
-    type: DataTypes.DATE,
+    type: DataTypes.DATEONLY,
     allowNull: false
   },
   total_price:{
     type: DECIMAL(10,2),
-    allowNull: false,
+    allowNull: true,
+    defaultValue: null,
     comment: 'Итоговая цена (price_per_day * количество дней)'
   },
   price_per_day:{
@@ -44,11 +45,11 @@ const booking = sequelize.define('booking',{
     allowNull: false,
     comment: 'Цена за день на момент бронирования (снапшот)'
   },
-  booking_status_id:{
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    defaultValue: 1
-  }
+  booking_status: {
+  type: DataTypes.STRING(20),
+  allowNull: false,
+  defaultValue: 'pending'
+}
 },{
     tableName: 'booking',
     timestamps: false

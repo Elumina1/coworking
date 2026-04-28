@@ -1,31 +1,15 @@
 const bookingModel = require('../models/bookingModel')
-const bookingStatusModel = require('../models/bookingStatusModel')
 const workspaceModel = require('../models/workspaceModel')
 const workTypeModel = require('../models/worktypeModels')
 const userModel = require('../models/userModel')
 const priceModel = require('../models/priceModels')
 const paymentModel = require('../models/paymentModel')
-const paymentStatusModel = require('../models/paymentStatusModel')
 const { Op, Sequelize } = require('sequelize')
 const { sendEmail, getBookingCreatedTemplate, getBookingConfirmedTemplate, getBookingReminderTemplate } = require('../services/emailService')
 const { createYooPayment, getYooPayment, createYooRefund, cancelYooPayment } = require('../services/yooCheckoutService')
-const { getStatusId, getStatusIds, serializeBooking } = require('../services/statusService')
-
-const bookingStatusInclude = {
-  model: bookingStatusModel,
-  as: 'bookingStatus',
-  attributes: ['id', 'code', 'display_name']
-}
-
-const paymentStatusInclude = {
-  model: paymentStatusModel,
-  as: 'paymentStatus',
-  attributes: ['id', 'code', 'display_name']
-}
 
 function getBookingIncludes(includePayments = true) {
   const includes = [
-    bookingStatusInclude,
     {
       model: userModel,
       as: 'user',
@@ -48,8 +32,7 @@ function getBookingIncludes(includePayments = true) {
     includes.push({
       model: paymentModel,
       as: 'payments',
-      attributes: ['id', 'amount', 'external_id', 'receipt_id', 'refund_id', 'created_at', 'updated_at', 'payment_status_id'],
-      include: [paymentStatusInclude]
+      attributes: ['id', 'amount', 'external_id', 'receipt_id', 'refund_id', 'created_at', 'updated_at', 'payment_status']
     })
   }
 
@@ -85,11 +68,10 @@ class BookingController {
         return res.status(400).json({ message: 'Рабочее место недоступно' })
       }
 
-      const activeBookingStatusIds = await getStatusIds('booking', ['pending', 'confirmed'])
       const overlappingBooking = await bookingModel.findOne({
         where: {
           workspace_id,
-          booking_status_id: { [Op.in]: activeBookingStatusIds },
+          booking_status: { [Op.in]: ['pending', 'confirmed'] },
           [Op.or]: [
             {
               start_date: { [Op.lte]: end_date },
@@ -115,8 +97,6 @@ class BookingController {
       const days = Math.ceil((new Date(end_date) - new Date(start_date)) / (1000 * 60 * 60 * 24))
       const pricePerDay = parseFloat(currentPrice.price_day)
       const totalPrice = pricePerDay * days
-      const bookingStatusId = await getStatusId('booking', booking_status || 'pending')
-
       const booking = await bookingModel.create({
         user_id,
         workspace_id,
@@ -124,7 +104,7 @@ class BookingController {
         end_date,
         price_per_day: pricePerDay,
         total_price: totalPrice,
-        booking_status_id: bookingStatusId
+        booking_status: booking_status || 'pending'
       })
 
       const createdBooking = await findBookingById(booking.id, false)
@@ -136,7 +116,7 @@ class BookingController {
           startDate: new Date(start_date).toLocaleDateString('ru-RU'),
           endDate: new Date(end_date).toLocaleDateString('ru-RU'),
           totalPrice,
-          status: createdBooking.bookingStatus.code
+          status: createdBooking.booking_status
         }
 
         const emailHtml = getBookingCreatedTemplate(
@@ -149,7 +129,7 @@ class BookingController {
         console.error('Ошибка отправки email:', emailError)
       }
 
-      return res.status(201).json(serializeBooking(createdBooking))
+      return res.status(201).json(createdBooking)
     } catch (error) {
       if (error.message.includes('Статус')) {
         return res.status(400).json({ message: error.message })
@@ -171,7 +151,7 @@ class BookingController {
         order: [['id', 'DESC'], [{ model: paymentModel, as: 'payments' }, 'created_at', 'DESC']]
       })
 
-      return res.json(bookings.map(serializeBooking))
+      return res.json(bookings)
     } catch (error) {
       return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
     }
@@ -207,11 +187,10 @@ class BookingController {
         return res.status(400).json({ message: 'Рабочее место недоступно' })
       }
 
-      const activeBookingStatusIds = await getStatusIds('booking', ['pending', 'confirmed'])
       const overlappingBooking = await bookingModel.findOne({
         where: {
           workspace_id: newWorkspaceId,
-          booking_status_id: { [Op.in]: activeBookingStatusIds },
+          booking_status: { [Op.in]: ['pending', 'confirmed'] },
           id: { [Op.ne]: id },
           [Op.or]: [
             {
@@ -230,7 +209,7 @@ class BookingController {
         workspace_id: newWorkspaceId,
         start_date: newStartDate,
         end_date: newEndDate,
-        booking_status_id: booking_status ? await getStatusId('booking', booking_status) : booking.booking_status_id
+        booking_status: booking_status || booking.booking_status
       }
 
       if (req.user.role_id === 1 && req.body.user_id) {
@@ -239,7 +218,7 @@ class BookingController {
 
       await bookingModel.update(updateData, { where: { id } })
       const updatedBooking = await findBookingById(id)
-      return res.json(serializeBooking(updatedBooking))
+      return res.json(updatedBooking)
     } catch (error) {
       if (error.message.includes('Статус')) {
         return res.status(400).json({ message: error.message })
@@ -259,10 +238,6 @@ class BookingController {
         return res.status(403).json({ message: 'Недостаточно прав для отмены этого бронирования' })
       }
 
-      const canceledPaymentStatusId = await getStatusId('payment', 'canceled')
-      const refundedPaymentStatusId = await getStatusId('payment', 'refunded')
-      const cancelledBookingStatusId = await getStatusId('booking', 'cancelled')
-
       const payment = await paymentModel.findOne({
         where: { booking_id: id },
         order: [['created_at', 'DESC']]
@@ -273,23 +248,23 @@ class BookingController {
           const paymentData = await getYooPayment(payment.external_id)
           if (['pending', 'waiting_for_capture'].includes(paymentData.status)) {
             await cancelYooPayment(paymentData.id)
-            await payment.update({ payment_status_id: canceledPaymentStatusId })
+            await payment.update({ payment_status: 'canceled' })
           } else if (paymentData.status === 'succeeded') {
             const refund = await createYooRefund({
               paymentId: paymentData.id,
               amount: payment.amount,
               description: `Возврат средств за бронирование #${booking.id}`
             })
-            await payment.update({ payment_status_id: refundedPaymentStatusId, refund_id: refund.id })
+            await payment.update({ payment_status: 'refunded', refund_id: refund.id })
           }
         } catch (refundError) {
           console.error('Ошибка возврата средств при отмене бронирования:', refundError)
         }
       }
 
-      await bookingModel.update({ booking_status_id: cancelledBookingStatusId }, { where: { id } })
+      await bookingModel.update({ booking_status: 'cancelled' }, { where: { id } })
       const cancelledBooking = await findBookingById(id)
-      return res.json({ message: 'Бронирование отменено', booking: serializeBooking(cancelledBooking) })
+      return res.json({ message: 'Бронирование отменено', booking: cancelledBooking })
     } catch (error) {
       return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
     }
@@ -303,11 +278,10 @@ class BookingController {
         return res.status(400).json({ message: 'Дата начала должна быть раньше даты окончания' })
       }
 
-      const activeBookingStatusIds = await getStatusIds('booking', ['pending', 'confirmed'])
       const booked = await bookingModel.findAll({
         attributes: ['workspace_id'],
         where: {
-          booking_status_id: { [Op.in]: activeBookingStatusIds },
+          booking_status: { [Op.in]: ['pending', 'confirmed'] },
           [Op.or]: [
             {
               start_date: { [Op.lte]: end_date },
@@ -351,11 +325,10 @@ class BookingController {
       const dayEnd = new Date(requestedDate)
       dayEnd.setHours(23, 59, 59, 999)
 
-      const activeBookingStatusIds = await getStatusIds('booking', ['pending', 'confirmed'])
       const bookings = await bookingModel.findAll({
         where: {
           workspace_id,
-          booking_status_id: { [Op.in]: activeBookingStatusIds },
+          booking_status: { [Op.in]: ['pending', 'confirmed'] },
           start_date: { [Op.lte]: dayEnd },
           end_date: { [Op.gte]: dayStart }
         }
@@ -400,19 +373,12 @@ class BookingController {
         return res.status(404).json({ message: 'Бронирование не найдено' })
       }
 
-      const confirmedBookingStatusId = await getStatusId('booking', 'confirmed')
-
-      const existingPayment = await paymentModel.findOne({
-        where: { booking_id: id },
-        order: [['created_at', 'DESC']]
-      })
-
       if (existingPayment && existingPayment.external_id) {
         const paymentData = await getYooPayment(existingPayment.external_id)
-        await existingPayment.update({ payment_status_id: await getStatusId('payment', paymentData.status) })
+        await existingPayment.update({ payment_status: paymentData.status })
 
         if (paymentData.status === 'succeeded') {
-          await bookingModel.update({ booking_status_id: confirmedBookingStatusId }, { where: { id } })
+          await bookingModel.update({ booking_status: 'confirmed' }, { where: { id } })
           try {
             const emailHtml = getBookingConfirmedTemplate(
               `${booking.user.full_name} ${booking.user.second_name}`,
@@ -453,7 +419,7 @@ class BookingController {
         user_id: booking.user_id,
         amount: booking.total_price,
         external_id: paymentData.id,
-        payment_status_id: await getStatusId('payment', paymentData.status)
+        payment_status: paymentData.status
       })
 
       return res.status(201).json({
@@ -519,11 +485,10 @@ class BookingController {
       }
 
       const totalWorkspaces = await workspaceModel.count()
-      const activeBookingStatusIds = await getStatusIds('booking', ['pending', 'confirmed'])
 
       const occupiedBookings = await bookingModel.findAll({
         where: {
-          booking_status_id: { [Op.in]: activeBookingStatusIds },
+          booking_status: { [Op.in]: ['pending', 'confirmed'] },
           [Op.or]: [
             {
               start_date: { [Op.lte]: end_date },
@@ -566,11 +531,9 @@ class BookingController {
         return res.status(400).json({ message: 'group_by должен быть "day" или "month"' })
       }
 
-      const revenueStatusIds = await getStatusIds('booking', ['confirmed', 'completed'])
-
       const revenueData = await bookingModel.findAll({
         where: {
-          booking_status_id: { [Op.in]: revenueStatusIds },
+          booking_status: { [Op.in]: ['confirmed', 'completed'] },
           start_date: { [Op.gte]: start_date },
           end_date: { [Op.lte]: end_date }
         },
@@ -584,7 +547,7 @@ class BookingController {
 
       const totalRevenue = await bookingModel.sum('total_price', {
         where: {
-          booking_status_id: { [Op.in]: revenueStatusIds },
+          booking_status: { [Op.in]: ['confirmed', 'completed'] },
           start_date: { [Op.gte]: start_date },
           end_date: { [Op.lte]: end_date }
         }
@@ -605,7 +568,7 @@ class BookingController {
     try {
       const { start_date, end_date } = req.query
       const whereCondition = {
-        booking_status_id: { [Op.in]: await getStatusIds('booking', ['confirmed', 'completed']) }
+        booking_status: { [Op.in]: ['confirmed', 'completed'] }
       }
 
       if (start_date && end_date) {
@@ -652,7 +615,7 @@ class BookingController {
     try {
       const { start_date, end_date } = req.query
       const whereCondition = {
-        booking_status_id: { [Op.in]: await getStatusIds('booking', ['confirmed', 'completed']) }
+        booking_status: { [Op.in]: ['confirmed', 'completed'] }
       }
 
       if (start_date && end_date) {
