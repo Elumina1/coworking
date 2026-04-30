@@ -9,7 +9,7 @@ const { Op } = require('sequelize')
 // Функция для отправки напоминаний о предстоящих бронированиях
 async function sendReminders() {
   try {
-    console.log('Проверка предстоящих бронирований для напоминаний...')
+    console.log('📅 Checking upcoming bookings for reminders...')
 
     const now = new Date()
     const reminderTime = new Date(now.getTime() + 24 * 60 * 60 * 1000) // За 24 часа до начала
@@ -41,7 +41,10 @@ async function sendReminders() {
       ]
     })
 
-    console.log(`Найдено ${upcomingBookings.length} бронирований для напоминания`)
+    console.log(`📬 Found ${upcomingBookings.length} bookings to send reminders for`)
+
+    let successCount = 0;
+    let failureCount = 0;
 
     for (const booking of upcomingBookings) {
       try {
@@ -60,21 +63,30 @@ async function sendReminders() {
           hoursUntilStart
         )
 
-        await sendEmail(booking.user.email, 'Напоминание о бронировании', emailHtml)
-        console.log(`Напоминание отправлено пользователю ${booking.user.email}`)
+        const emailResult = await sendEmail(booking.user.email, 'Напоминание о бронировании', emailHtml)
+        if (emailResult.success) {
+          console.log(`✓ Reminder sent to ${booking.user.email}`)
+          successCount++;
+        } else {
+          console.warn(`⚠️  Failed to send reminder to ${booking.user.email}: ${emailResult.error}`)
+          failureCount++;
+        }
       } catch (emailError) {
-        console.error(`Ошибка отправки напоминания пользователю ${booking.user.email}:`, emailError)
+        console.error(`❌ Error sending reminder to ${booking.user.email}:`, emailError.message)
+        failureCount++;
       }
     }
+
+    console.log(`📊 Reminder sending completed: ${successCount} sent, ${failureCount} failed`)
   } catch (error) {
-    console.error('Ошибка в задаче отправки напоминаний:', error)
+    console.error('❌ Error in reminder sending task:', error.message)
   }
 }
 
 // Функция для обновления статуса завершенных бронирований
 async function updateCompletedBookings() {
   try {
-    console.log('Обновление статуса завершенных бронирований...')
+    console.log('📆 Updating completed bookings status...')
 
     const now = new Date()
 
@@ -89,10 +101,12 @@ async function updateCompletedBookings() {
     )
 
     if (result[0] > 0) {
-      console.log(`Обновлено ${result[0]} завершенных бронирований`)
+      console.log(`✓ Updated ${result[0]} completed bookings`)
+    } else {
+      console.log('No completed bookings to update')
     }
   } catch (error) {
-    console.error('Ошибка обновления завершенных бронирований:', error)
+    console.error('❌ Error updating completed bookings:', error.message)
   }
 }
 

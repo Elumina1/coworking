@@ -124,9 +124,12 @@ class BookingController {
           bookingDetails
         )
 
-        await sendEmail(createdBooking.user.email, 'Бронирование создано', emailHtml)
+        const emailResult = await sendEmail(createdBooking.user.email, 'Бронирование создано', emailHtml)
+        if (!emailResult.success) {
+          console.warn(`⚠️  Failed to send booking created email to ${createdBooking.user.email}: ${emailResult.error}`)
+        }
       } catch (emailError) {
-        console.error('Ошибка отправки email:', emailError)
+        console.error('❌ Critical error sending booking created email:', emailError.message)
       }
 
       return res.status(201).json(createdBooking)
@@ -373,6 +376,11 @@ class BookingController {
         return res.status(404).json({ message: 'Бронирование не найдено' })
       }
 
+      const existingPayment = await paymentModel.findOne({
+        where: { booking_id: id },
+        order: [['created_at', 'DESC']]
+      })
+
       if (existingPayment && existingPayment.external_id) {
         const paymentData = await getYooPayment(existingPayment.external_id)
         await existingPayment.update({ payment_status: paymentData.status })
@@ -390,9 +398,12 @@ class BookingController {
                 totalPrice: booking.total_price
               }
             )
-            await sendEmail(booking.user.email, 'Бронирование подтверждено', emailHtml)
+            const emailResult = await sendEmail(booking.user.email, 'Бронирование подтверждено', emailHtml)
+            if (!emailResult.success) {
+              console.warn(`⚠️  Failed to send booking confirmed email to ${booking.user.email}: ${emailResult.error}`)
+            }
           } catch (emailError) {
-            console.error('Ошибка отправки email подтверждения:', emailError)
+            console.error('❌ Critical error sending booking confirmed email:', emailError.message)
           }
         }
 
@@ -465,10 +476,14 @@ class BookingController {
           hoursUntilStart
         )
 
-        await sendEmail(booking.user.email, 'Напоминание о бронировании', emailHtml)
+        const emailResult = await sendEmail(booking.user.email, 'Напоминание о бронировании', emailHtml)
+        if (!emailResult.success) {
+          console.warn(`⚠️  Failed to send reminder email to ${booking.user.email}: ${emailResult.error}`)
+          return res.status(500).json({ message: 'Ошибка отправки напоминания' })
+        }
         return res.json({ message: 'Напоминание отправлено' })
       } catch (emailError) {
-        console.error('Ошибка отправки напоминания:', emailError)
+        console.error('❌ Critical error sending reminder email:', emailError.message)
         return res.status(500).json({ message: 'Ошибка отправки напоминания' })
       }
     } catch (error) {
