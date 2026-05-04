@@ -159,7 +159,7 @@ async function getTransporter() {
   return transporterPromise
 }
 
-async function sendEmail(to, subject, html, retries = 1) {
+async function sendEmail(to, subject, html, retries = 1, extraOptions = {}) {
   if (!to || !subject || !html) {
     return { success: false, error: 'Missing email parameters' }
   }
@@ -174,7 +174,8 @@ async function sendEmail(to, subject, html, retries = 1) {
         from: `"${config.fromName}" <${config.user}>`,
         to,
         subject,
-        html
+        html,
+        ...extraOptions
       })
 
       console.log(`✓ Email sent to ${to} - ${info.messageId}`)
@@ -247,9 +248,53 @@ function getBookingReminderTemplate(userName, bookingDetails, hoursUntilStart) {
   `
 }
 
+function getPaymentSucceededTemplate(userName, bookingDetails) {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #0b7a47;">Оплата прошла успешно</h2>
+      <p>Здравствуйте, ${userName}!</p>
+      <p>Ваше бронирование оплачено и подтверждено.</p>
+      <div style="background-color: #eef8f2; padding: 15px; border-radius: 5px; margin: 20px 0;">
+        <p><strong>Рабочее место:</strong> ${bookingDetails.workspaceName}</p>
+        <p><strong>Тип:</strong> ${bookingDetails.workType}</p>
+        <p><strong>Период:</strong> ${bookingDetails.startDate} - ${bookingDetails.endDate}</p>
+        <p><strong>Сумма:</strong> ${bookingDetails.totalPrice} руб.</p>
+        <p><strong>ID платежа:</strong> ${bookingDetails.paymentId}</p>
+        <p><strong>ID чека:</strong> ${bookingDetails.receiptId || 'ещё формируется'}</p>
+      </div>
+      <p>Данные чека приложены к письму.</p>
+      <p>С уважением,<br>Команда Coworking</p>
+    </div>
+  `
+}
+
+function buildReceiptAttachment({ booking, payment, receipt, paymentData }) {
+  const lines = [
+    'Чек по оплате бронирования',
+    `Бронирование ID: ${booking.id}`,
+    `Рабочее место: ${booking.workspace?.workspace_name || booking.workspace_id}`,
+    `Тип: ${booking.workspace?.work_type?.type_name || 'Не указан'}`,
+    `Пользователь: ${booking.user?.email || booking.user_id}`,
+    `Период: ${new Date(booking.start_date).toLocaleDateString('ru-RU')} - ${new Date(booking.end_date).toLocaleDateString('ru-RU')}`,
+    `Сумма: ${Number(booking.total_price).toFixed(2)} RUB`,
+    `Статус платежа: ${paymentData?.status || payment?.payment_status || 'unknown'}`,
+    `ID платежа YooKassa: ${paymentData?.id || payment?.external_id || 'не указан'}`,
+    `ID чека YooKassa: ${receipt?.id || payment?.receipt_id || 'не указан'}`,
+    `Время формирования: ${new Date().toISOString()}`
+  ]
+
+  return {
+    filename: `receipt-booking-${booking.id}.txt`,
+    content: lines.join('\n'),
+    contentType: 'text/plain; charset=utf-8'
+  }
+}
+
 module.exports = {
   sendEmail,
   getBookingCreatedTemplate,
   getBookingConfirmedTemplate,
-  getBookingReminderTemplate
+  getBookingReminderTemplate,
+  getPaymentSucceededTemplate,
+  buildReceiptAttachment
 }

@@ -246,12 +246,15 @@ class BookingController {
         order: [['created_at', 'DESC']]
       })
 
+      let cancelMessage = 'Бронирование отменено'
+
       if (payment && payment.external_id) {
         try {
           const paymentData = await getYooPayment(payment.external_id)
           if (['pending', 'waiting_for_capture'].includes(paymentData.status)) {
             await cancelYooPayment(paymentData.id)
             await payment.update({ payment_status: 'canceled' })
+            cancelMessage = 'Бронирование отменено, платёж отменён'
           } else if (paymentData.status === 'succeeded') {
             const refund = await createYooRefund({
               paymentId: paymentData.id,
@@ -259,15 +262,28 @@ class BookingController {
               description: `Возврат средств за бронирование #${booking.id}`
             })
             await payment.update({ payment_status: 'refunded', refund_id: refund.id })
+            cancelMessage = 'Бронирование отменено, возврат средств инициирован'
+          } else if (paymentData.status === 'refunded') {
+            cancelMessage = 'Бронирование отменено, средства уже возвращены'
+          } else if (paymentData.status === 'canceled') {
+            cancelMessage = 'Бронирование отменено, платёж уже отменён'
+          } else {
+            return res.status(400).json({
+              message: `Нельзя отменить бронирование для статуса платежа ${paymentData.status}`
+            })
           }
         } catch (refundError) {
           console.error('Ошибка возврата средств при отмене бронирования:', refundError)
+          return res.status(500).json({
+            message: 'Не удалось выполнить отмену бронирования, потому что возврат средств завершился ошибкой',
+            error: refundError.message
+          })
         }
       }
 
       await bookingModel.update({ booking_status: 'cancelled' }, { where: { id } })
       const cancelledBooking = await findBookingById(id)
-      return res.json({ message: 'Бронирование отменено', booking: cancelledBooking })
+      return res.json({ message: cancelMessage, booking: cancelledBooking })
     } catch (error) {
       return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
     }
@@ -597,31 +613,36 @@ class BookingController {
           {
             model: workspaceModel,
             as: 'workspace',
+            attributes: [],
             include: [
               {
                 model: workTypeModel,
                 as: 'work_type',
-                attributes: ['id', 'type_name']
+                attributes: []
               }
             ]
           }
         ],
         attributes: [
+          [Sequelize.col('workspace.work_type.id'), 'work_type_id'],
+          [Sequelize.col('workspace.work_type.type_name'), 'type_name'],
           [Sequelize.fn('COUNT', Sequelize.col('booking.id')), 'booking_count']
         ],
-        group: ['workspace.work_type_id'],
-        order: [[Sequelize.fn('COUNT', Sequelize.col('booking.id')), 'DESC']]
+        group: ['workspace.work_type.id', 'workspace.work_type.type_name'],
+        order: [[Sequelize.literal('booking_count'), 'DESC']],
+        raw: true
       })
 
       return res.json({
         popularWorkTypes: popularTypes.map(item => ({
-          work_type_id: item.workspace.work_type.id,
-          type_name: item.workspace.work_type.type_name,
-          booking_count: item.dataValues.booking_count
+          work_type_id: item.work_type_id,
+          type_name: item.type_name,
+          booking_count: Number(item.booking_count)
         })),
         period: start_date && end_date ? { start_date, end_date } : null
       })
     } catch (error) {
+      console.error('Ошибка отчёта popular-work-types:', error)
       return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
     }
   }
@@ -644,28 +665,39 @@ class BookingController {
           {
             model: userModel,
             as: 'user',
-            attributes: ['id', 'email', 'full_name', 'second_name']
+            attributes: []
           }
         ],
         attributes: [
           'user_id',
+          [Sequelize.col('user.id'), 'user_id_ref'],
+          [Sequelize.col('user.email'), 'user_email'],
+          [Sequelize.col('user.full_name'), 'user_full_name'],
+          [Sequelize.col('user.second_name'), 'user_second_name'],
           [Sequelize.fn('COUNT', Sequelize.col('booking.id')), 'booking_count'],
           [Sequelize.fn('SUM', Sequelize.col('total_price')), 'total_spent']
         ],
-        group: ['user_id'],
-        order: [[Sequelize.fn('SUM', Sequelize.col('total_price')), 'DESC']]
+        group: ['booking.user_id', 'user.id', 'user.email', 'user.full_name', 'user.second_name'],
+        order: [[Sequelize.literal('total_spent'), 'DESC']],
+        raw: true
       })
 
       return res.json({
         userBookings: userBookings.map(item => ({
           user_id: item.user_id,
-          user: item.user,
-          booking_count: item.dataValues.booking_count,
-          total_spent: parseFloat(item.dataValues.total_spent)
+          user: {
+            id: item.user_id_ref,
+            email: item.user_email,
+            full_name: item.user_full_name,
+            second_name: item.user_second_name
+          },
+          booking_count: Number(item.booking_count),
+          total_spent: parseFloat(item.total_spent)
         })),
         period: start_date && end_date ? { start_date, end_date } : null
       })
     } catch (error) {
+      console.error('Ошибка отчёта user-bookings:', error)
       return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
     }
   }

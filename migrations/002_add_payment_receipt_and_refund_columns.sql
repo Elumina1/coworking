@@ -1,0 +1,5 @@
+USE `coworking`;
+
+ALTER TABLE `payment`
+  ADD COLUMN IF NOT EXISTS `receipt_id` VARCHAR(255) NULL DEFAULT NULL AFTER `external_id`,
+  ADD COLUMN IF NOT EXISTS `refund_id` VARCHAR(255) NULL DEFAULT NULL AFTER `receipt_id`;

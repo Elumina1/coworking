@@ -367,8 +367,13 @@ const createBooking = async () => {
       end_date: filters.value.end_date
     })
 
+    const bookedWorkspaceName =
+      response.data?.workspace?.workspace_name ||
+      workspaceMap.value.get(response.data?.workspace_id)?.workspace_name ||
+      selectedWorkspace.value.workspace_name
+
     await Promise.all([loadBookings(), loadAvailability()])
-    bookingMessage.value = `Место "${selectedWorkspace.value.workspace_name}" забронировано. Сумма: ${Number(response.data.total_price).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`
+    bookingMessage.value = `Место "${bookedWorkspaceName}" забронировано. Сумма: ${Number(response.data.total_price).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`
   } catch (error) {
     bookingMessage.value = error?.response?.data?.message || 'Не удалось создать бронирование'
   } finally {
@@ -747,6 +752,10 @@ watch(
                 Чек сформирован: {{ booking.latestPayment.receipt_id }}
               </p>
 
+              <p v-if="booking.latestPayment?.refund_id" class="payment-note">
+                Возврат зарегистрирован: {{ booking.latestPayment.refund_id }}
+              </p>
+
               <div class="payment-actions">
                 <button
                   v-if="booking.booking_status !== 'cancelled' && booking.latestPayment?.payment_status !== 'succeeded'"
@@ -769,11 +778,11 @@ watch(
             </div>
 
             <button
-              v-if="booking.booking_status === 'pending'"
+              v-if="booking.booking_status !== 'cancelled' && booking.booking_status !== 'completed'"
               class="btn-cancel"
               @click="cancelBooking(booking.id)"
             >
-              Отменить бронь
+              {{ booking.latestPayment?.payment_status === 'succeeded' ? 'Отменить бронь и вернуть средства' : 'Отменить бронь' }}
             </button>
           </article>
         </div>
