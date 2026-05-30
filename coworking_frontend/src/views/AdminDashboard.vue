@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { adminService, workTypeService, workspaceService, bookingService, userService, priceService, reportService } from '../services/api'
+import { adminService, workTypeService, workspaceService, bookingService, userService, priceService, reportService, auditService } from '../services/api'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -26,6 +26,7 @@ const adminSubmitting = ref(false)
 const priceSubmitting = ref(false)
 const priceActionId = ref(null)
 const reportsLoading = ref(false)
+const auditLoading = ref(false)
 
 const workTypeMessage = ref('')
 const workspaceMessage = ref('')
@@ -33,6 +34,7 @@ const actionMessage = ref('')
 const adminMessage = ref('')
 const priceMessage = ref('')
 const reportsMessage = ref('')
+const auditMessage = ref('')
 
 const newWorkType = ref({
   type_name: ''
@@ -95,6 +97,7 @@ const occupancyReport = ref(null)
 const revenueReport = ref(null)
 const popularWorkTypesReport = ref([])
 const userBookingsReport = ref([])
+const auditLogs = ref([])
 
 const adminUsers = computed(() => users.value.filter((user) => user.role_id === 1))
 const pricesWithType = computed(() =>
@@ -143,6 +146,29 @@ const getErrorMessage = (error, fallback) =>
   error?.response?.data?.error ||
   error?.message ||
   fallback
+
+const actionLabels = {
+  'booking.created': 'Бронирование создано',
+  'booking.updated': 'Бронирование изменено',
+  'booking.cancelled': 'Бронирование отменено',
+  'price.created': 'Цена создана',
+  'price.updated': 'Цена изменена',
+  'workspace.disabled': 'Место отключено',
+  'workspace.enabled': 'Место включено'
+}
+
+const getActionLabel = (action) => actionLabels[action] || action
+
+const formatAuditValue = (value) => {
+  if (!value) {
+    return '—'
+  }
+
+  return Object.entries(value)
+    .filter(([key]) => !['password', 'payments', 'notifications'].includes(key))
+    .map(([key, item]) => `${key}: ${typeof item === 'object' && item !== null ? JSON.stringify(item) : item}`)
+    .join('\n')
+}
 
 const loadBookings = async () => {
   loading.value = true
@@ -236,6 +262,7 @@ const createWorkspace = async () => {
 
     workspaceMessage.value = 'Рабочее место успешно добавлено'
     await loadResources()
+    void loadAudit()
   } catch (error) {
     workspaceMessage.value = getErrorMessage(error, 'Не удалось создать рабочее место')
   } finally {
@@ -346,6 +373,7 @@ const updateWorkspace = async (id) => {
     workspaceMessage.value = `Рабочее место #${id} успешно обновлено`
     cancelWorkspaceEdit()
     await loadResources()
+    void loadAudit()
   } catch (error) {
     workspaceMessage.value = getErrorMessage(error, 'Не удалось обновить рабочее место')
   } finally {
@@ -441,6 +469,7 @@ const createPrice = async () => {
     }
     priceMessage.value = 'Новая цена успешно установлена'
     await loadResources()
+    void loadAudit()
   } catch (error) {
     priceMessage.value = getErrorMessage(error, 'Не удалось установить цену')
   } finally {
@@ -490,6 +519,7 @@ const updatePrice = async (id) => {
     priceMessage.value = `Цена #${id} успешно обновлена`
     cancelPriceEdit()
     await loadResources()
+    void loadAudit()
   } catch (error) {
     priceMessage.value = getErrorMessage(error, 'Не удалось обновить цену')
   } finally {
@@ -532,6 +562,19 @@ const loadReports = async () => {
   }
 }
 
+const loadAudit = async () => {
+  auditMessage.value = ''
+  auditLoading.value = true
+  try {
+    const response = await auditService.get(100)
+    auditLogs.value = response.data.logs || []
+  } catch (error) {
+    auditMessage.value = getErrorMessage(error, 'Не удалось загрузить аудит действий')
+  } finally {
+    auditLoading.value = false
+  }
+}
+
 const confirmBooking = async (id) => {
   actionMessage.value = ''
   bookingActionLoadingId.value = id
@@ -539,6 +582,7 @@ const confirmBooking = async (id) => {
     await adminService.confirmBooking(id)
     actionMessage.value = `Бронирование #${id} подтверждено`
     void loadBookings()
+    void loadAudit()
   } catch (error) {
     actionMessage.value = getErrorMessage(error, 'Не удалось подтвердить бронирование')
   } finally {
@@ -570,6 +614,7 @@ const cancelBooking = async (id) => {
     await bookingService.cancelBooking(id)
     actionMessage.value = `Бронирование #${id} отменено`
     void loadBookings()
+    void loadAudit()
   } catch (error) {
     actionMessage.value = getErrorMessage(error, 'Не удалось отменить бронирование')
   } finally {
@@ -579,7 +624,7 @@ const cancelBooking = async (id) => {
 
 onMounted(async () => {
   resetMessages()
-  await Promise.all([loadBookings(), loadResources(), loadReports()])
+  await Promise.all([loadBookings(), loadResources(), loadReports(), loadAudit()])
 })
 </script>
 
@@ -639,6 +684,12 @@ onMounted(async () => {
           :class="['tab', { active: activeTab === 'reports' }]"
         >
           Отчёты
+        </button>
+        <button
+          @click="activeTab = 'audit'"
+          :class="['tab', { active: activeTab === 'audit' }]"
+        >
+          Аудит
         </button>
         <button
           @click="activeTab = 'settings'"
@@ -1365,6 +1416,52 @@ onMounted(async () => {
           <p><strong>Администратор:</strong> {{ authStore.user?.email || 'Не определён' }}</p>
         </div>
       </div>
+
+      <div v-show="activeTab === 'audit'" class="tab-content">
+        <div class="section-header">
+          <div>
+            <h3>Аудит действий</h3>
+            <p class="section-subtitle">Кто и когда менял бронирования, цены и доступность рабочих мест.</p>
+          </div>
+          <button class="btn-primary" :disabled="auditLoading" @click="loadAudit">
+            {{ auditLoading ? 'Обновляем...' : 'Обновить аудит' }}
+          </button>
+        </div>
+
+        <p v-if="auditMessage" class="message error">{{ auditMessage }}</p>
+        <div v-if="auditLoading" class="loading">Загрузка аудита...</div>
+        <div v-else-if="auditLogs.length === 0" class="empty">
+          <p>Журнал аудита пока пуст</p>
+        </div>
+
+        <div v-else class="audit-list">
+          <article v-for="entry in auditLogs" :key="entry.id" class="audit-item">
+            <div class="audit-top">
+              <div>
+                <strong>{{ getActionLabel(entry.action) }}</strong>
+                <span>{{ new Date(entry.created_at).toLocaleString('ru-RU') }}</span>
+              </div>
+              <span class="audit-entity">{{ entry.entity }} #{{ entry.entity_id }}</span>
+            </div>
+
+            <div class="audit-actor">
+              <span>Пользователь: {{ entry.actor?.email || `ID ${entry.actor?.id || 'не определён'}` }}</span>
+              <span>Роль: {{ entry.actor?.role_id === 1 ? 'Админ' : 'Пользователь' }}</span>
+            </div>
+
+            <div class="audit-values">
+              <div>
+                <h5>Было</h5>
+                <pre>{{ formatAuditValue(entry.old_value) }}</pre>
+              </div>
+              <div>
+                <h5>Стало</h5>
+                <pre>{{ formatAuditValue(entry.new_value) }}</pre>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -1860,6 +1957,76 @@ button:disabled {
   margin-bottom: 0;
 }
 
+.audit-list {
+  display: grid;
+  gap: 14px;
+}
+
+.audit-item {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 18px;
+  background: #fffaf2;
+  border: 1px solid rgba(84, 62, 44, 0.08);
+}
+
+.audit-top,
+.audit-actor {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.audit-top div {
+  display: grid;
+  gap: 4px;
+}
+
+.audit-top span,
+.audit-actor {
+  color: #74685c;
+}
+
+.audit-entity {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(47, 93, 80, 0.1);
+  color: #2f5d50;
+  font-weight: 700;
+}
+
+.audit-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.audit-values div {
+  display: grid;
+  gap: 8px;
+}
+
+.audit-values h5 {
+  margin: 0;
+  color: #5d5146;
+}
+
+.audit-values pre {
+  min-height: 92px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f2eadf;
+  color: #3f352c;
+  font: 0.86rem/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
 @media (max-width: 960px) {
   .navbar,
   .section-header {
@@ -1872,6 +2039,10 @@ button:disabled {
   }
 
   .reports-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-values {
     grid-template-columns: 1fr;
   }
 }

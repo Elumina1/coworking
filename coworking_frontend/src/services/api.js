@@ -93,11 +93,21 @@ export const reportService = {
     api.get('/reports/user-bookings', { params: { start_date, end_date } })
 }
 
+export const auditService = {
+  get: (limit = 100) => api.get('/audit', { params: { limit } })
+}
+
 export const userService = {
   getAll: () => api.get('/get/user'),
   create: (data) => api.post('/post/user', data),
   update: (email, data) => api.put(`/update/user/${email}`, data),
   delete: (email) => api.delete(`/delete/user/${email}`)
+}
+
+export const profileService = {
+  get: () => api.get('/profile'),
+  update: (data) => api.put('/profile', data),
+  changePassword: (data) => api.put('/profile/password', data)
 }
 
 export default api

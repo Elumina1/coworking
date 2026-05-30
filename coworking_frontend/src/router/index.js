@@ -5,6 +5,7 @@ import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import UserDashboard from '../views/UserDashboard.vue'
 import AdminDashboard from '../views/AdminDashboard.vue'
+import ProfileView from '../views/ProfileView.vue'
 
 const routes = [
   {
@@ -37,6 +38,12 @@ const routes = [
     path: '/user',
     name: 'UserDashboard',
     component: UserDashboard,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: ProfileView,
     meta: { requiresAuth: true }
   }
 ]

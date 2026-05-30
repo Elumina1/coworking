@@ -1,7 +1,97 @@
 const bcrypt = require('bcrypt')
 const userModel = require('../models/userModel')
 
+function sanitizeUser(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    full_name: user.full_name,
+    second_name: user.second_name,
+    role_id: user.role_id
+  }
+}
+
 class UserController {
+  async getProfile(req, res) {
+    try {
+      const user = await userModel.findOne({
+        where: { id: req.user.id },
+        attributes: ['id', 'email', 'full_name', 'second_name', 'role_id']
+      })
+
+      if (!user) {
+        return res.status(404).json({ message: 'Пользователь не найден' })
+      }
+
+      return res.json(user)
+    } catch (error) {
+      return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
+    }
+  }
+
+  async updateProfile(req, res) {
+    try {
+      const { email, full_name, second_name } = req.body
+
+      if (!email || !full_name || !second_name) {
+        return res.status(400).json({ message: 'Заполните ФИО и email' })
+      }
+
+      const user = await userModel.findOne({ where: { id: req.user.id } })
+      if (!user) {
+        return res.status(404).json({ message: 'Пользователь не найден' })
+      }
+
+      if (email !== user.email) {
+        const emailOwner = await userModel.findOne({ where: { email } })
+        if (emailOwner && emailOwner.id !== user.id) {
+          return res.status(400).json({ message: 'Email уже занят' })
+        }
+      }
+
+      await user.update({
+        email,
+        full_name,
+        second_name
+      })
+
+      return res.json(sanitizeUser(user))
+    } catch (error) {
+      return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
+    }
+  }
+
+  async changePassword(req, res) {
+    try {
+      const { current_password, new_password } = req.body
+
+      if (!current_password || !new_password) {
+        return res.status(400).json({ message: 'Укажите текущий и новый пароль' })
+      }
+
+      if (new_password.length < 6) {
+        return res.status(400).json({ message: 'Новый пароль должен быть не короче 6 символов' })
+      }
+
+      const user = await userModel.findOne({ where: { id: req.user.id } })
+      if (!user) {
+        return res.status(404).json({ message: 'Пользователь не найден' })
+      }
+
+      const passwordMatches = await bcrypt.compare(current_password, user.password)
+      if (!passwordMatches) {
+        return res.status(400).json({ message: 'Текущий пароль указан неверно' })
+      }
+
+      user.password = await bcrypt.hash(new_password, 10)
+      await user.save()
+
+      return res.json({ message: 'Пароль обновлён' })
+    } catch (error) {
+      return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
+    }
+  }
+
   async create(req, res) {
     try {
       const { email, password, full_name, second_name, role_id } = req.body

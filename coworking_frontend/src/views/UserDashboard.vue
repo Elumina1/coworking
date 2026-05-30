@@ -511,6 +511,7 @@ watch(
         <h1>Выберите место на карте</h1>
       </div>
       <div class="navbar-right">
+        <button @click="router.push('/profile')" class="nav-button">Профиль</button>
         <span class="user-pill">{{ authStore.user?.full_name }} {{ authStore.user?.second_name }}</span>
         <button @click="handleLogout" class="btn-logout">Выход</button>
       </div>
@@ -840,13 +841,16 @@ watch(
   flex-wrap: wrap;
 }
 
-.user-pill {
+.user-pill,
+.nav-button {
   padding: 10px 14px;
   border: 1px solid rgba(253, 247, 239, 0.22);
   border-radius: 999px;
   background: rgba(253, 247, 239, 0.1);
+  color: #fdf7ef;
 }
 
+.nav-button,
 .btn-logout {
   border: 1px solid rgba(253, 247, 239, 0.4);
   background: transparent;
@@ -857,6 +861,7 @@ watch(
   transition: background 0.2s ease, transform 0.2s ease;
 }
 
+.nav-button:hover,
 .btn-logout:hover {
   background: rgba(253, 247, 239, 0.12);
   transform: translateY(-1px);

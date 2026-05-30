@@ -7,6 +7,7 @@ const paymentModel = require('../models/paymentModel')
 const { Op, Sequelize } = require('sequelize')
 const { sendEmail, getBookingCreatedTemplate, getBookingConfirmedTemplate, getBookingReminderTemplate } = require('../services/emailService')
 const { createYooPayment, getYooPayment, createYooRefund, cancelYooPayment } = require('../services/yooCheckoutService')
+const { writeAuditLog } = require('../services/auditService')
 
 function runInBackground(task, label) {
   Promise.resolve()
@@ -117,6 +118,15 @@ class BookingController {
 
       const createdBooking = await findBookingById(booking.id, false)
 
+      await writeAuditLog({
+        req,
+        entity: 'booking',
+        entityId: createdBooking.id,
+        action: 'booking.created',
+        oldValue: null,
+        newValue: createdBooking
+      })
+
       runInBackground(async () => {
         const bookingDetails = {
           workspaceName: createdBooking.workspace.workspace_name,
@@ -225,8 +235,27 @@ class BookingController {
         updateData.user_id = req.body.user_id
       }
 
+      const oldValue = {
+        id: booking.id,
+        user_id: booking.user_id,
+        workspace_id: booking.workspace_id,
+        start_date: booking.start_date,
+        end_date: booking.end_date,
+        booking_status: booking.booking_status
+      }
+
       await bookingModel.update(updateData, { where: { id } })
       const updatedBooking = await findBookingById(id)
+
+      await writeAuditLog({
+        req,
+        entity: 'booking',
+        entityId: id,
+        action: 'booking.updated',
+        oldValue,
+        newValue: updatedBooking
+      })
+
       return res.json(updatedBooking)
     } catch (error) {
       if (error.message.includes('Статус')) {
@@ -287,8 +316,28 @@ class BookingController {
         }
       }
 
+      const oldValue = {
+        id: booking.id,
+        user_id: booking.user_id,
+        workspace_id: booking.workspace_id,
+        start_date: booking.start_date,
+        end_date: booking.end_date,
+        booking_status: booking.booking_status
+      }
+
       await bookingModel.update({ booking_status: 'cancelled' }, { where: { id } })
       const cancelledBooking = await findBookingById(id)
+
+      await writeAuditLog({
+        req,
+        entity: 'booking',
+        entityId: id,
+        action: 'booking.cancelled',
+        oldValue,
+        newValue: cancelledBooking,
+        metadata: { message: cancelMessage }
+      })
+
       return res.json({ message: cancelMessage, booking: cancelledBooking })
     } catch (error) {
       return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
@@ -408,7 +457,28 @@ class BookingController {
         await existingPayment.update({ payment_status: paymentData.status })
 
         if (paymentData.status === 'succeeded') {
+          const oldValue = {
+            id: booking.id,
+            user_id: booking.user_id,
+            workspace_id: booking.workspace_id,
+            start_date: booking.start_date,
+            end_date: booking.end_date,
+            booking_status: booking.booking_status
+          }
+
           await bookingModel.update({ booking_status: 'confirmed' }, { where: { id } })
+          const confirmedBooking = await findBookingById(id)
+
+          await writeAuditLog({
+            req,
+            entity: 'booking',
+            entityId: id,
+            action: 'booking.updated',
+            oldValue,
+            newValue: confirmedBooking,
+            metadata: { reason: 'admin_confirmed_after_payment' }
+          })
+
           runInBackground(async () => {
             const emailHtml = getBookingConfirmedTemplate(
               `${booking.user.full_name} ${booking.user.second_name}`,

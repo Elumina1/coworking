@@ -1,4 +1,5 @@
 const workspaceModel = require('../models/workspaceModel')
+const { writeAuditLog } = require('../services/auditService')
 
 class WorkspaceController{
     //создания нового рабочего места
@@ -26,7 +27,25 @@ class WorkspaceController{
         try{
             const {id} = req.params
             const {work_type_id, workspace_name, is_available} = req.body
+            const oldWorkspace = await workspaceModel.findOne({ where: { id } })
+            if (!oldWorkspace) {
+                return res.status(404).json({ message: 'Рабочее место не найдено' })
+            }
+
             const update = await workspaceModel.update({work_type_id, workspace_name, is_available}, {where: {id}})
+
+            const updatedWorkspace = await workspaceModel.findOne({ where: { id } })
+            if (oldWorkspace.is_available !== updatedWorkspace.is_available) {
+                await writeAuditLog({
+                    req,
+                    entity: 'workspace',
+                    entityId: id,
+                    action: updatedWorkspace.is_available ? 'workspace.enabled' : 'workspace.disabled',
+                    oldValue: oldWorkspace,
+                    newValue: updatedWorkspace
+                })
+            }
+
             return res.json(update)
         }catch(error){
             res.status(500).json(error)
