@@ -372,8 +372,9 @@ const createBooking = async () => {
       workspaceMap.value.get(response.data?.workspace_id)?.workspace_name ||
       selectedWorkspace.value.workspace_name
 
-    await Promise.all([loadBookings(), loadAvailability()])
     bookingMessage.value = `Место "${bookedWorkspaceName}" забронировано. Сумма: ${Number(response.data.total_price).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`
+    void loadBookings()
+    void loadAvailability()
   } catch (error) {
     bookingMessage.value = error?.response?.data?.message || 'Не удалось создать бронирование'
   } finally {
@@ -388,7 +389,9 @@ const cancelBooking = async (id) => {
 
   try {
     await bookingService.cancelBooking(id)
-    await Promise.all([loadBookings(), loadAvailability()])
+    bookingMessage.value = 'Бронирование обновлено'
+    void loadBookings()
+    void loadAvailability()
   } catch (error) {
     bookingMessage.value = error?.response?.data?.message || 'Не удалось отменить бронирование'
   }
@@ -419,7 +422,6 @@ const openCheckout = async (booking) => {
 
   try {
     const response = await paymentService.createCheckout(booking.id)
-    await loadBookings()
 
     if (response.data.confirmation_url) {
       window.open(response.data.confirmation_url, '_blank', 'noopener,noreferrer')
@@ -427,6 +429,7 @@ const openCheckout = async (booking) => {
     } else {
       paymentMessage.value = response.data.message || 'Платёж создан.'
     }
+    void loadBookings()
   } catch (error) {
     paymentMessage.value = error?.response?.data?.message || 'Не удалось создать платёж'
   } finally {
@@ -440,8 +443,8 @@ const refreshPaymentStatus = async (booking) => {
 
   try {
     const response = await paymentService.getStatus(booking.id)
-    await loadBookings()
     paymentMessage.value = response.data.message || 'Статус оплаты обновлён'
+    void loadBookings()
   } catch (error) {
     paymentMessage.value = error?.response?.data?.message || 'Не удалось обновить статус оплаты'
   } finally {
@@ -462,8 +465,9 @@ const handlePaymentReturn = async () => {
 
   try {
     const response = await paymentService.getStatus(bookingId)
-    await Promise.all([loadBookings(), loadAvailability()])
     paymentMessage.value = response.data.message || 'Оплата успешно обновлена'
+    void loadBookings()
+    void loadAvailability()
   } catch (error) {
     paymentMessage.value = error?.response?.data?.message || 'Не удалось обновить оплату после возврата'
   } finally {

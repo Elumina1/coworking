@@ -29,6 +29,26 @@ async function createYooPayment({ amount, description, returnUrl, metadata = {} 
   return checkout.createPayment(payload)
 }
 
+async function createYooPaymentWithReceipt({ amount, description, returnUrl, metadata = {}, receipt }) {
+  const payload = {
+    amount: formatAmount(amount),
+    payment_method_data: { type: 'bank_card' },
+    confirmation: {
+      type: 'redirect',
+      return_url: returnUrl
+    },
+    capture: true,
+    description,
+    metadata
+  }
+
+  if (receipt) {
+    payload.receipt = receipt
+  }
+
+  return checkout.createPayment(payload)
+}
+
 async function getYooPayment(paymentId) {
   return checkout.getPayment(paymentId)
 }
@@ -77,10 +97,16 @@ async function createYooReceipt({
   return checkout.createReceipt(payload)
 }
 
+async function getYooReceiptList(filters = {}) {
+  return checkout.getReceiptList(filters)
+}
+
 module.exports = {
   createYooPayment,
+  createYooPaymentWithReceipt,
   getYooPayment,
   cancelYooPayment,
   createYooRefund,
-  createYooReceipt
+  createYooReceipt,
+  getYooReceiptList
 }

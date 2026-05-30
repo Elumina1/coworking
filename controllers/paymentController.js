@@ -5,16 +5,26 @@ const workspaceModel = require('../models/workspaceModel');
 const workTypeModel = require('../models/worktypeModels');
 const {
   createYooPayment,
+  createYooPaymentWithReceipt,
   getYooPayment,
   cancelYooPayment,
   createYooRefund,
-  createYooReceipt
+  createYooReceipt,
+  getYooReceiptList
 } = require('../services/yooCheckoutService');
 const {
   sendEmail,
   getPaymentSucceededTemplate,
   buildReceiptAttachment
 } = require('../services/emailService');
+
+function runInBackground(task, label) {
+  Promise.resolve()
+    .then(task)
+    .catch((error) => {
+      console.error(`Ошибка фоновой задачи ${label}:`, error.message)
+    })
+}
 
 function normalizePaymentStatus(paymentStatus) {
   if (!paymentStatus && paymentStatus !== 0) {
@@ -76,35 +86,46 @@ async function sendPaymentSuccessEmail({ booking, payment, paymentData, receipt 
   }
 }
 
+function buildPaymentReceiptPayload(booking) {
+  return {
+    customer: {
+      email: booking.user.email
+    },
+    items: [
+      {
+        description: `Бронирование ${booking.workspace.workspace_name}`,
+        quantity: '1.00',
+        amount: {
+          value: Number(booking.total_price).toFixed(2),
+          currency: 'RUB'
+        },
+        vat_code: 1
+      }
+    ],
+    tax_system_code: 1
+  }
+}
+
 async function ensureReceiptForPayment({ booking, payment, paymentData }) {
-  if (!payment || payment.receipt_id) {
+  if (!payment || payment.receipt_id || !paymentData?.id) {
     return null;
   }
 
   try {
-    const receipt = await createYooReceipt({
-      paymentId: paymentData.id,
-      customer: {
-        email: booking.user.email
-      },
-      items: [
-        {
-          description: `Бронирование ${booking.workspace.workspace_name}`,
-          quantity: '1.00',
-          amount: {
-            value: Number(booking.total_price).toFixed(2),
-            currency: 'RUB'
-          },
-          vat_code: 1
-        }
-      ],
-      tax_system_code: 1
-    });
+    const receiptList = await getYooReceiptList({
+      payment_id: paymentData.id,
+      limit: 1
+    })
+
+    const receipt = receiptList?.items?.[0] || null
+    if (!receipt?.id) {
+      return null
+    }
 
     await payment.update({ receipt_id: receipt.id });
     return receipt;
   } catch (receiptError) {
-    console.error('Ошибка создания чека YooKassa:', receiptError);
+    console.error('Ошибка получения чека YooKassa по payment_id:', receiptError);
     return null;
   }
 }
@@ -187,18 +208,20 @@ class PaymentController {
           const bookingStatus = await syncBookingStatus(bookingId, normalizedStatus);
 
           if (normalizedStatus === 'succeeded') {
-            const receipt = await ensureReceiptForPayment({
-              booking,
-              payment: existingPayment,
-              paymentData
-            });
             if (previousStatus !== 'succeeded') {
-              await sendPaymentSuccessEmail({
-                booking,
-                payment: existingPayment,
-                paymentData,
-                receipt
-              });
+              runInBackground(async () => {
+                const receipt = await ensureReceiptForPayment({
+                  booking,
+                  payment: existingPayment,
+                  paymentData
+                });
+                await sendPaymentSuccessEmail({
+                  booking,
+                  payment: existingPayment,
+                  paymentData,
+                  receipt
+                });
+              }, 'payment-success-email-existing');
             }
             return res.json({
               message: 'Платеж уже выполнен, бронирование подтверждено',
@@ -221,14 +244,15 @@ class PaymentController {
 
       const baseReturnUrl = process.env.YOO_RETURN_URL || 'http://localhost:5173/user?payment=return';
       const returnUrl = appendBookingIdToReturnUrl(baseReturnUrl, booking.id);
-      paymentData = await createYooPayment({
+      paymentData = await createYooPaymentWithReceipt({
         amount: booking.total_price,
         description: `Оплата бронирования #${booking.id}`,
         returnUrl,
         metadata: {
           booking_id: booking.id,
           user_id: booking.user_id
-        }
+        },
+        receipt: buildPaymentReceiptPayload(booking)
       });
 
       const normalizedStatus = normalizePaymentStatus(paymentData.status);
@@ -300,27 +324,25 @@ class PaymentController {
       await payment.update(updateData);
       const bookingStatus = await syncBookingStatus(bookingId, normalizedStatus);
       const updatedBooking = await bookingModel.findOne({ where: { id: bookingId } });
-      let receipt = null;
-
-      if (normalizedStatus === 'succeeded') {
-        receipt = await ensureReceiptForPayment({
-          booking,
-          payment,
-          paymentData
-        });
-      }
-
       if (normalizedStatus === 'succeeded' && previousStatus !== 'succeeded') {
-        await sendPaymentSuccessEmail({
-          booking,
-          payment: {
-            ...payment.get({ plain: true }),
-            ...updateData,
-            receipt_id: receipt?.id || payment.receipt_id || null
-          },
-          paymentData,
-          receipt
-        });
+        runInBackground(async () => {
+          const receipt = await ensureReceiptForPayment({
+            booking,
+            payment,
+            paymentData
+          });
+
+          await sendPaymentSuccessEmail({
+            booking,
+            payment: {
+              ...payment.get({ plain: true }),
+              ...updateData,
+              receipt_id: receipt?.id || payment.receipt_id || null
+            },
+            paymentData,
+            receipt
+          });
+        }, 'payment-success-email-status');
       }
 
       return res.json({

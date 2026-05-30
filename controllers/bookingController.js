@@ -8,6 +8,14 @@ const { Op, Sequelize } = require('sequelize')
 const { sendEmail, getBookingCreatedTemplate, getBookingConfirmedTemplate, getBookingReminderTemplate } = require('../services/emailService')
 const { createYooPayment, getYooPayment, createYooRefund, cancelYooPayment } = require('../services/yooCheckoutService')
 
+function runInBackground(task, label) {
+  Promise.resolve()
+    .then(task)
+    .catch((error) => {
+      console.error(`Ошибка фоновой задачи ${label}:`, error.message)
+    })
+}
+
 function getBookingIncludes(includePayments = true) {
   const includes = [
     {
@@ -109,7 +117,7 @@ class BookingController {
 
       const createdBooking = await findBookingById(booking.id, false)
 
-      try {
+      runInBackground(async () => {
         const bookingDetails = {
           workspaceName: createdBooking.workspace.workspace_name,
           workType: createdBooking.workspace.work_type.type_name,
@@ -128,9 +136,7 @@ class BookingController {
         if (!emailResult.success) {
           console.warn(`⚠️  Failed to send booking created email to ${createdBooking.user.email}: ${emailResult.error}`)
         }
-      } catch (emailError) {
-        console.error('❌ Critical error sending booking created email:', emailError.message)
-      }
+      }, 'booking-created-email')
 
       return res.status(201).json(createdBooking)
     } catch (error) {
@@ -403,7 +409,7 @@ class BookingController {
 
         if (paymentData.status === 'succeeded') {
           await bookingModel.update({ booking_status: 'confirmed' }, { where: { id } })
-          try {
+          runInBackground(async () => {
             const emailHtml = getBookingConfirmedTemplate(
               `${booking.user.full_name} ${booking.user.second_name}`,
               {
@@ -418,9 +424,7 @@ class BookingController {
             if (!emailResult.success) {
               console.warn(`⚠️  Failed to send booking confirmed email to ${booking.user.email}: ${emailResult.error}`)
             }
-          } catch (emailError) {
-            console.error('❌ Critical error sending booking confirmed email:', emailError.message)
-          }
+          }, 'booking-confirmed-email')
         }
 
         return res.json({
@@ -479,7 +483,7 @@ class BookingController {
         return res.status(400).json({ message: 'Бронирование уже началось или прошло' })
       }
 
-      try {
+      runInBackground(async () => {
         const bookingDetails = {
           workspaceName: booking.workspace.workspace_name,
           workType: booking.workspace.work_type.type_name,
@@ -495,13 +499,10 @@ class BookingController {
         const emailResult = await sendEmail(booking.user.email, 'Напоминание о бронировании', emailHtml)
         if (!emailResult.success) {
           console.warn(`⚠️  Failed to send reminder email to ${booking.user.email}: ${emailResult.error}`)
-          return res.status(500).json({ message: 'Ошибка отправки напоминания' })
         }
-        return res.json({ message: 'Напоминание отправлено' })
-      } catch (emailError) {
-        console.error('❌ Critical error sending reminder email:', emailError.message)
-        return res.status(500).json({ message: 'Ошибка отправки напоминания' })
-      }
+      }, 'booking-reminder-email')
+
+      return res.json({ message: 'Напоминание поставлено в очередь отправки' })
     } catch (error) {
       return res.status(500).json({ message: 'Ошибка сервера', error: error.message })
     }

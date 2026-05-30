@@ -537,8 +537,8 @@ const confirmBooking = async (id) => {
   bookingActionLoadingId.value = id
   try {
     await adminService.confirmBooking(id)
-    await loadBookings()
     actionMessage.value = `Бронирование #${id} подтверждено`
+    void loadBookings()
   } catch (error) {
     actionMessage.value = getErrorMessage(error, 'Не удалось подтвердить бронирование')
   } finally {
@@ -568,8 +568,8 @@ const cancelBooking = async (id) => {
   bookingActionLoadingId.value = id
   try {
     await bookingService.cancelBooking(id)
-    await loadBookings()
     actionMessage.value = `Бронирование #${id} отменено`
+    void loadBookings()
   } catch (error) {
     actionMessage.value = getErrorMessage(error, 'Не удалось отменить бронирование')
   } finally {
